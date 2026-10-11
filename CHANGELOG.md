@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.5 - 2026-10-11
+
+- updated `pyproject.toml` repository URLs after the GitHub account rename from `jinxishe` to `aiimagestudio`
+
 ## v1.2.4 - 2026-10-11
 
 - added `PromptEngineFull` outputs `prompt_json` and `llm_repair_prompt` for downstream LLM refinement
