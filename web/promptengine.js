@@ -387,6 +387,37 @@ function setupPromptEngineNode(nodeType) {
 }
 
 // ─────────────────────────────────────────────
+// 收窄重应用
+// 新版 ComfyUI 刷新节点定义时，核心代码会用后端 INPUT_TYPES 的
+// 选项列表（所有维度的并集）整体重置 combo widget 的 options.values，
+// 且核心重置发生在插件钩子之前。这里在刷新流程结束后重新收窄回
+// 单个维度的列表。
+// ─────────────────────────────────────────────
+
+function reapplyStyleSetup(node, dictData) {
+    if (node.type === "PromptEngineNode") {
+        const categoryWidget = node.widgets?.find(w => w.name === "category");
+        const styleWidget    = node.widgets?.find(w => w.name === "style");
+        if (!categoryWidget || !styleWidget) return;
+
+        const dimKey = categoryWidget._displayToKey?.[categoryWidget.value]
+            ?? categoryWidget.value ?? DIMS[0];
+        refreshStyleWidget(styleWidget, dimKey, dictData, true);
+        restoreStyleWidgetValue(node, styleWidget, dimKey, dictData);
+        installSerializeHook(styleWidget, dimKey);
+    } else if (node.type === "PromptEngineFull") {
+        for (const dim of DIMS) {
+            const styleWidget = node.widgets?.find(w => w.name === `${dim}_style`);
+            if (!styleWidget) continue;
+
+            refreshStyleWidget(styleWidget, dim, dictData, true);
+            restoreStyleWidgetValue(node, styleWidget, dim, dictData);
+            installSerializeHook(styleWidget, dim);
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // PromptEngine Full — 全维度节点
 // ─────────────────────────────────────────────
 
@@ -438,6 +469,17 @@ app.registerExtension({
         }
         if (nodeData.name === "PromptEngineFull") {
             setupPromptEngineFull(nodeType);
+        }
+    },
+
+    // 节点定义刷新（reloadNodeDefs）后，前端核心已把 combo 的
+    // options.values 重置回后端并集列表；此时重新收窄到各维度。
+    async refreshComboInNodes(_nodeDefs) {
+        const dictData = await loadDictionaries();
+        if (!dictData || !Object.keys(dictData).length) return;
+
+        for (const node of app.graph?._nodes ?? []) {
+            reapplyStyleSetup(node, dictData);
         }
     },
 });
