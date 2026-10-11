@@ -305,6 +305,84 @@ def join_parts(*parts: str) -> str:
     return ", ".join(p.strip() for p in parts if p and p.strip())
 
 
+def serialize_json(payload: dict) -> str:
+    """Serialize JSON payloads for node outputs and LLM handoff."""
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def build_full_prompt_payload(
+    seed: int,
+    variation: bool,
+    custom_text: str,
+    styles: dict[str, str],
+    resolved_fields: dict[str, str],
+    prompt_out: str,
+) -> dict:
+    """Build a structured payload for downstream LLM refinement."""
+    dimensions = {}
+    for dim in DIMS:
+        dimensions[dim] = {
+            "style": styles.get(dim, STYLE_SKIP),
+            "text": resolved_fields.get(dim, ""),
+        }
+
+    return {
+        "seed": seed,
+        "variation": variation,
+        "custom_text": custom_text.strip(),
+        "prompt": prompt_out,
+        "dimensions": dimensions,
+    }
+
+
+def build_llm_repair_prompt(payload: dict) -> str:
+    """Create an instruction prompt for LLM-based conflict repair."""
+    payload_json = serialize_json(payload)
+    return (
+        "You are a prompt consistency repair assistant for text-to-image prompts.\n"
+        "Your task is to remove obvious logical contradictions while preserving the original intent, subject, and style as much as possible.\n\n"
+        "Rules:\n"
+        "1. Only fix clear semantic conflicts such as climate vs outfit, indoor vs background, or realism vs impossible object combinations.\n"
+        "2. Prefer the smallest possible change. Do not rewrite unrelated fields.\n"
+        "3. Keep the subject identity, camera language, lighting, and overall visual style whenever possible.\n"
+        "4. If the prompt is already coherent, keep all fields unchanged.\n"
+        "5. Return valid JSON only. Do not return markdown.\n\n"
+        "Return schema:\n"
+        "{\n"
+        '  "has_conflict": true,\n'
+        '  "reasoning": ["short reason 1", "short reason 2"],\n'
+        '  "changes": {\n'
+        '    "outfit": "new field text only when needed"\n'
+        "  },\n"
+        '  "refined_dimensions": {\n'
+        '    "ethnicity": "field text",\n'
+        '    "gender": "field text",\n'
+        '    "age_appearance": "field text",\n'
+        '    "subject_appearance": "field text",\n'
+        '    "hair_style": "field text",\n'
+        '    "hair_color": "field text",\n'
+        '    "outfit": "field text",\n'
+        '    "accessories": "field text",\n'
+        '    "pose": "field text",\n'
+        '    "body_direction": "field text",\n'
+        '    "expression": "field text",\n'
+        '    "gaze": "field text",\n'
+        '    "location_type": "field text",\n'
+        '    "background_props": "field text",\n'
+        '    "atmosphere": "field text",\n'
+        '    "shot_angle": "field text",\n'
+        '    "shot_distance": "field text",\n'
+        '    "composition": "field text",\n'
+        '    "lighting": "field text",\n'
+        '    "color_grade": "field text",\n'
+        '    "visual_style": "field text"\n'
+        "  }\n"
+        "}\n\n"
+        "Input payload:\n"
+        f"{payload_json}\n"
+    )
+
+
 def make_rng(seed: int, _unused: list) -> random.Random:
     """
     返回固定 seed 的 RNG 实例。
@@ -488,8 +566,8 @@ class PromptEngineFull:
     """
 
     CATEGORY = "PromptEngine"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("prompt_out",)
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("prompt_out", "prompt_json", "llm_repair_prompt")
     FUNCTION = "generate"
 
     @classmethod
@@ -497,11 +575,13 @@ class PromptEngineFull:
         return _build_full_input_types()
 
     def generate(self, variation: bool, seed: int,
-                 custom_text: str = "", **kwargs) -> tuple[str]:
+                 custom_text: str = "", **kwargs) -> tuple[str, str, str]:
 
         rng = make_rng(seed, [])
 
         parts = []
+        resolved_fields = {}
+        selected_styles = {}
 
         # 前缀
         if custom_text and custom_text.strip():
@@ -510,7 +590,9 @@ class PromptEngineFull:
         # 按标准顺序拼接各维度
         for dim in DIMS:
             style = kwargs.get(f"{dim}_style", STYLE_SKIP)
+            selected_styles[dim] = style
             content = resolve_style_content(dim, style, variation, rng)
+            resolved_fields[dim] = content
             if content:
                 # 特殊处理：ethnicity 和 gender 的拼接
                 if dim == "ethnicity":
@@ -543,7 +625,17 @@ class PromptEngineFull:
                     parts.append(content)
 
         prompt_out = ", ".join(parts)
-        return (prompt_out,)
+        payload = build_full_prompt_payload(
+            seed=seed,
+            variation=variation,
+            custom_text=custom_text,
+            styles=selected_styles,
+            resolved_fields=resolved_fields,
+            prompt_out=prompt_out,
+        )
+        prompt_json = serialize_json(payload)
+        llm_repair_prompt = build_llm_repair_prompt(payload)
+        return (prompt_out, prompt_json, llm_repair_prompt)
 
 
 # ─────────────────────────────────────────────

@@ -143,7 +143,7 @@ def main():
     kwargs = {f"{dim}_style": module.STYLE_SKIP for dim in module.DIMS}
     kwargs["outfit_style"] = "black_lace_lingerie"
     kwargs["lighting_style"] = "mock_cluster_a"
-    out, = full_node.generate(
+    out, payload_json, llm_repair_prompt = full_node.generate(
         variation=False,
         seed=0,
         custom_text="1girl",
@@ -154,6 +154,12 @@ def main():
         "1girl, black lace lingerie, mock lighting phrase A",
         "PromptEngineFull.generate",
     )
+    payload = json.loads(payload_json)
+    assert_equal(payload["prompt"], out, "PromptEngineFull JSON prompt")
+    assert_equal(payload["dimensions"]["outfit"]["text"], "black lace lingerie", "PromptEngineFull JSON outfit")
+    assert '"outfit": "field text"' in llm_repair_prompt
+    assert '"prompt": "1girl, black lace lingerie, mock lighting phrase A"' in llm_repair_prompt
+    print("[PASS] PromptEngineFull JSON + LLM prompt")
 
     color_key = next(iter(module.DICTIONARIES["hair_color"]["clusters"].keys()))
     style_key = next(iter(module.DICTIONARIES["hair_style"]["clusters"].keys()))
@@ -175,7 +181,7 @@ def main():
     kwargs = {f"{dim}_style": module.STYLE_SKIP for dim in module.DIMS}
     kwargs["hair_color_style"] = color_key
     kwargs["hair_style_style"] = style_key
-    out, = full_node.generate(
+    out, payload_json, _llm_repair_prompt = full_node.generate(
         variation=False,
         seed=0,
         custom_text="",
@@ -185,6 +191,17 @@ def main():
         out,
         "mock hair_color phrase A mock hair_style phrase A",
         "PromptEngineFull hair_color + hair_style merge",
+    )
+    payload = json.loads(payload_json)
+    assert_equal(
+        payload["dimensions"]["hair_color"]["text"],
+        "mock hair_color phrase A",
+        "PromptEngineFull JSON hair_color",
+    )
+    assert_equal(
+        payload["dimensions"]["hair_style"]["text"],
+        "mock hair_style phrase A",
+        "PromptEngineFull JSON hair_style",
     )
 
     print("\nAll offline checks passed.")
