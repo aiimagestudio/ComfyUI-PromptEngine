@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.4 - 2026-10-11
+
+- added `PromptEngineFull` outputs `prompt_json` and `llm_repair_prompt` for downstream LLM refinement
+- fixed the `style` dropdown showing every category's options (5,482-entry list) after ComfyUI refreshes node definitions
+
 ## v1.2.1 - 2026-03-19
 
 - removed `output_subdir` from `Step1DimensionExtract`; Step 1 output is fixed to `output/step1_json/`

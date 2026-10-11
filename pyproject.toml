@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-promptengine"
 description = "Dictionary-based prompt composition nodes and dictionary-building tools for ComfyUI."
-version = "1.2.3"
+version = "1.2.4"
 license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.10"
